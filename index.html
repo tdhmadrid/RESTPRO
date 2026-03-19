@@ -1668,6 +1668,16 @@ tr.warning-row td { background: rgba(232,155,75,0.05); }
           </button>
         </div>
 
+        <!-- Panel de usuarios (solo admin) -->
+        <div class="card" id="panel-usuarios-admin" style="display:none">
+          <div class="card-title"><i class="fas fa-users-cog"></i> Gestión de Usuarios</div>
+          <div class="form-hint" style="margin-bottom:12px">
+            Los usuarios se registran desde <strong>login.html</strong>. Aquí asignas su rol y permisos.<br>
+            El primer usuario registrado es <strong>Administrador</strong> automáticamente.
+          </div>
+          <div id="usuarios-lista"></div>
+        </div>
+
         <div class="card">
           <div class="card-title"><i class="fas fa-database"></i> Gestión de Datos</div>
           <div class="flex flex-col gap-3">
@@ -3977,6 +3987,293 @@ function fmtPct(n) { return (parseFloat(n)||0).toFixed(1)+'%'; }
 function today()   { return new Date().toISOString().split('T')[0]; }
 
 // ══════════════════════════════════════════════════════════════
+// ── SISTEMA DE ROLES Y PERMISOS ──
+// ══════════════════════════════════════════════════════════════
+
+let _miPerfil = null;  // {id, email, nombre, rol, permisos, activo}
+
+// Roles predefinidos con sus permisos por defecto
+const ROLES_PREDEFINIDOS = {
+  admin: {
+    label: 'Administrador', icon: 'fa-crown', color: '#E8B84B',
+    descripcion: 'Acceso total al sistema',
+    permisos: {}  // vacío = todo permitido
+  },
+  gerente: {
+    label: 'Gerente', icon: 'fa-user-tie', color: '#4BE87D',
+    descripcion: 'Todo excepto gestión de usuarios',
+    permisos: {
+      ver_empleados:true, editar_empleados:true,
+      ver_ventas:true, editar_ventas:true,
+      ver_gastos:true, editar_gastos:true,
+      editar_proveedores:true, editar_productos:true,
+      editar_bases:true, editar_recetas:true,
+      ver_reportes:true, ver_compras:true, editar_compras:true
+    }
+  },
+  cocinero: {
+    label: 'Cocinero', icon: 'fa-hat-chef', color: '#E8534B',
+    descripcion: 'Recetas, bases y materia prima',
+    permisos: {
+      ver_empleados:false, editar_empleados:false,
+      ver_ventas:false, editar_ventas:false,
+      ver_gastos:false, editar_gastos:false,
+      editar_proveedores:false, editar_productos:true,
+      editar_bases:true, editar_recetas:true,
+      ver_reportes:false, ver_compras:true, editar_compras:false
+    }
+  },
+  mesero: {
+    label: 'Mesero', icon: 'fa-utensils', color: '#4BA6E8',
+    descripcion: 'Solo consulta de recetas y ventas',
+    permisos: {
+      ver_empleados:false, editar_empleados:false,
+      ver_ventas:true, editar_ventas:false,
+      ver_gastos:false, editar_gastos:false,
+      editar_proveedores:false, editar_productos:false,
+      editar_bases:false, editar_recetas:false,
+      ver_reportes:false, ver_compras:false, editar_compras:false
+    }
+  },
+  personalizado: {
+    label: 'Personalizado', icon: 'fa-sliders', color: '#888',
+    descripcion: 'Permisos configurados manualmente',
+    permisos: {}
+  }
+};
+
+// Etiquetas legibles para cada permiso
+const PERMISOS_LABELS = {
+  ver_empleados:     'Ver empleados y nóminas',
+  editar_empleados:  'Editar empleados y nóminas',
+  ver_ventas:        'Ver ventas',
+  editar_ventas:     'Registrar ventas',
+  ver_gastos:        'Ver gastos fijos',
+  editar_gastos:     'Editar gastos fijos',
+  editar_proveedores:'Editar proveedores',
+  editar_productos:  'Editar materia prima',
+  editar_bases:      'Editar bases/preparaciones',
+  editar_recetas:    'Editar recetas/escandallos',
+  ver_reportes:      'Ver reportes y análisis',
+  ver_compras:       'Ver compras',
+  editar_compras:    'Registrar compras',
+};
+
+// Cargar el perfil del usuario actual desde Supabase
+async function cargarMiPerfil() {
+  try {
+    const { data, error } = await _sb.rpc('get_mi_perfil');
+    if (!error && data) {
+      _miPerfil = typeof data === 'string' ? JSON.parse(data) : data;
+    }
+  } catch(e) {
+    console.warn('cargarMiPerfil:', e.message);
+  }
+  // Si no tiene perfil (primer login antes del trigger), crear uno
+  if (!_miPerfil && _currentUser) {
+    _miPerfil = { id: _currentUser.id, email: _currentUser.email,
+                  nombre: _currentUser.email, rol: 'admin', permisos: {}, activo: true };
+  }
+}
+
+// Verificar si el usuario puede realizar una acción
+// El admin siempre puede todo. Para otros, verificar el permiso.
+function puedeHacer(permiso) {
+  if (!_miPerfil) return false;
+  if (_miPerfil.rol === 'admin') return true;
+  const p = _miPerfil.permisos || {};
+  // Si el permiso no está definido explícitamente, usar el del rol predefinido
+  if (permiso in p) return !!p[permiso];
+  const rolDef = ROLES_PREDEFINIDOS[_miPerfil.rol];
+  if (rolDef && permiso in rolDef.permisos) return !!rolDef.permisos[permiso];
+  return false; // denegado por defecto si no está definido
+}
+
+// Ocultar/mostrar elemento según permiso
+function aplicarPermiso(el, permiso) {
+  if (!el) return;
+  el.style.display = puedeHacer(permiso) ? '' : 'none';
+}
+
+// Bloquear acción y mostrar toast si no tiene permiso
+function requierePermiso(permiso, accion) {
+  if (puedeHacer(permiso)) return true;
+  toast('error', `Sin permiso: ${PERMISOS_LABELS[permiso] || accion}`);
+  return false;
+}
+
+// Aplicar permisos a la interfaz tras cargar
+function aplicarPermisosUI() {
+  if (!_miPerfil) return;
+
+  // Ocultar secciones del sidebar según permisos
+  document.querySelectorAll('.nav-item').forEach(el => {
+    const onclick = el.getAttribute('onclick') || '';
+    if (onclick.includes("'empleados'") && !puedeHacer('ver_empleados'))
+      el.style.display = 'none';
+    if (onclick.includes("'ventas'") && !puedeHacer('ver_ventas'))
+      el.style.display = 'none';
+    if (onclick.includes("'gastos'") && !puedeHacer('ver_gastos'))
+      el.style.display = 'none';
+    if (onclick.includes("'reportes'") && !puedeHacer('ver_reportes'))
+      el.style.display = 'none';
+    if (onclick.includes("'compras'") && !puedeHacer('ver_compras'))
+      el.style.display = 'none';
+  });
+
+  // Mostrar badge de rol en sidebar
+  const bizName = document.getElementById('sidebar-biz-name');
+  if (bizName && _miPerfil.rol !== 'admin') {
+    const rolDef = ROLES_PREDEFINIDOS[_miPerfil.rol];
+    const badge = document.createElement('div');
+    badge.style.cssText = 'font-size:0.62rem;opacity:0.6;margin-top:1px';
+    badge.textContent = (rolDef?.label || _miPerfil.rol).toUpperCase();
+    if (!bizName.nextSibling?.textContent?.includes(rolDef?.label)) {
+      bizName.parentNode.insertBefore(badge, bizName.nextSibling);
+    }
+  }
+}
+
+// ── Gestión de usuarios (solo admin) ──────────────────────────
+
+let allPerfiles = [];
+
+async function cargarPerfiles() {
+  if (!puedeHacer('gestionar_usuarios') && _miPerfil?.rol !== 'admin') return;
+  try {
+    const { data, error } = await _sb.from('perfiles_usuario').select('*').order('creado');
+    if (!error) allPerfiles = data || [];
+  } catch(e) { allPerfiles = []; }
+}
+
+function renderGestionUsuarios() {
+  const container = document.getElementById('usuarios-lista');
+  if (!container) return;
+
+  if (!allPerfiles.length) {
+    container.innerHTML = '<div class="empty-state"><i class="fas fa-users"></i><p>Sin usuarios registrados</p></div>';
+    return;
+  }
+
+  container.innerHTML = allPerfiles.map(p => {
+    const rolDef = ROLES_PREDEFINIDOS[p.rol] || ROLES_PREDEFINIDOS.personalizado;
+    const isMe = p.id === _currentUser?.id;
+    return `<div class="card" style="margin-bottom:10px;padding:14px 16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:36px;height:36px;border-radius:50%;background:${rolDef.color}22;
+            border:2px solid ${rolDef.color};display:flex;align-items:center;justify-content:center">
+            <i class="fas ${rolDef.icon}" style="color:${rolDef.color};font-size:0.85rem"></i>
+          </div>
+          <div>
+            <div style="font-weight:700">${p.nombre||p.email} ${isMe?'<span class="badge badge-accent" style="font-size:0.6rem">Tú</span>':''}</div>
+            <div style="font-size:0.75rem;color:var(--text3)">${p.email}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge" style="background:${rolDef.color}22;color:${rolDef.color};border:1px solid ${rolDef.color}44">
+            <i class="fas ${rolDef.icon}" style="margin-right:4px"></i>${rolDef.label}
+          </span>
+          <span class="badge ${p.activo?'badge-success':'badge-gray'}">${p.activo?'Activo':'Inactivo'}</span>
+          ${!isMe ? `<button class="btn btn-ghost btn-sm" onclick="abrirModalEditarUsuario('${p.id}')">
+            <i class="fas fa-edit"></i> Editar
+          </button>` : ''}
+        </div>
+      </div>
+      ${p.rol === 'personalizado' || (p.permisos && Object.keys(p.permisos).length) ? `
+      <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:4px">
+        ${Object.entries(PERMISOS_LABELS).map(([k,v]) => {
+          const tiene = p.rol==='admin' || (p.permisos?.[k] ?? ROLES_PREDEFINIDOS[p.rol]?.permisos?.[k]);
+          return `<span class="badge" style="font-size:0.65rem;background:${tiene?'var(--success-soft)':'var(--bg3)'};color:${tiene?'var(--success)':'var(--text3)'}">
+            <i class="fas ${tiene?'fa-check':'fa-times'}" style="margin-right:3px"></i>${v}
+          </span>`;
+        }).join('')}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function abrirModalEditarUsuario(userId) {
+  const p = allPerfiles.find(x => x.id === userId);
+  if (!p) return;
+
+  const rolDef = ROLES_PREDEFINIDOS[p.rol] || ROLES_PREDEFINIDOS.personalizado;
+  const permisosActuales = p.rol === 'admin' ? {} :
+    Object.assign({}, ROLES_PREDEFINIDOS[p.rol]?.permisos || {}, p.permisos || {});
+
+  Swal.fire({
+    title: `Editar: ${p.nombre || p.email}`,
+    html: `
+      <div style="text-align:left;font-size:0.85rem">
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label">Nombre</label>
+          <input type="text" id="su-nombre" class="form-input" value="${p.nombre||''}">
+        </div>
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label">Rol</label>
+          <select id="su-rol" class="form-select" onchange="onSwalRolChange()">
+            ${Object.entries(ROLES_PREDEFINIDOS).map(([k,v]) =>
+              `<option value="${k}" ${p.rol===k?'selected':''}>${v.label} — ${v.descripcion}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div id="su-permisos-custom" style="${p.rol==='personalizado'?'':'display:none'}">
+          <label class="form-label" style="margin-bottom:8px">Permisos personalizados</label>
+          ${Object.entries(PERMISOS_LABELS).map(([k,v]) => `
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">
+              <input type="checkbox" id="sp-${k}" ${permisosActuales[k]?'checked':''}>
+              <span>${v}</span>
+            </label>`).join('')}
+        </div>
+        <div class="form-group" style="margin-top:12px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="su-activo" ${p.activo?'checked':''}>
+            <span>Usuario activo</span>
+          </label>
+        </div>
+      </div>`,
+    showCancelButton: true,
+    confirmButtonText: 'Guardar',
+    cancelButtonText: 'Cancelar',
+    didOpen: () => {
+      window.onSwalRolChange = () => {
+        const rol = document.getElementById('su-rol').value;
+        const custom = document.getElementById('su-permisos-custom');
+        if (custom) custom.style.display = rol === 'personalizado' ? '' : 'none';
+        // Auto-check permisos del rol seleccionado
+        if (rol !== 'personalizado' && ROLES_PREDEFINIDOS[rol]) {
+          Object.entries(ROLES_PREDEFINIDOS[rol].permisos).forEach(([k,v]) => {
+            const cb = document.getElementById('sp-'+k);
+            if (cb) cb.checked = v;
+          });
+        }
+      };
+    }
+  }).then(async result => {
+    if (!result.isConfirmed) return;
+    const nuevoRol = document.getElementById('su-rol').value;
+    const nuevosPermisos = {};
+    if (nuevoRol === 'personalizado') {
+      Object.keys(PERMISOS_LABELS).forEach(k => {
+        nuevosPermisos[k] = !!document.getElementById('sp-'+k)?.checked;
+      });
+    }
+    const { error } = await _sb.from('perfiles_usuario').update({
+      nombre:   document.getElementById('su-nombre').value.trim() || p.nombre,
+      rol:      nuevoRol,
+      permisos: nuevoRol === 'personalizado' ? nuevosPermisos : {},
+      activo:   !!document.getElementById('su-activo')?.checked,
+      actualizado: new Date().toISOString()
+    }).eq('id', userId);
+
+    if (error) return toast('error', 'Error: ' + error.message);
+    await cargarPerfiles();
+    renderGestionUsuarios();
+    toast('success', 'Usuario actualizado');
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
 // ── SUPABASE — Capa de datos (reemplaza IndexedDB) ──
 // ══════════════════════════════════════════════════════════════
 const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -4623,6 +4920,7 @@ function calcularCostoNeto() {
 }
 
 async function guardarProducto() {
+  if(!requierePermiso('editar_productos','Editar materia prima')) return;
   const nombre=document.getElementById('prod-nombre').value.trim();
   const costo=parseFloat(document.getElementById('prod-costo').value);
   if(!nombre) return toast('error','El nombre es obligatorio');
@@ -4679,6 +4977,7 @@ async function guardarProducto() {
 }
 
 async function eliminarProducto(id) {
+  if(!requierePermiso('editar_productos','Editar materia prima')) return;
   id = (id != null && id !== "") ? parseInt(id) : null;
   const res=await Swal.fire({title:'¿Eliminar materia prima?',text:'Esta acción no se puede deshacer.',icon:'warning',showCancelButton:true,confirmButtonText:'Sí, eliminar',cancelButtonText:'Cancelar'});
   if(!res.isConfirmed) return;
@@ -5147,6 +5446,7 @@ function abrirModalPreparacion(id = null) {
 }
 
 async function guardarPreparacion() {
+  if(!requierePermiso('editar_bases','Editar bases')) return;
   const nombre      = document.getElementById('prep-nombre').value.trim();
   const rendimiento = parseFloat(document.getElementById('prep-rendimiento').value);
   if(!nombre)                          return toast('error','El nombre es obligatorio');
@@ -5188,6 +5488,7 @@ async function guardarPreparacion() {
 }
 
 async function eliminarPreparacion(id) {
+  if(!requierePermiso('editar_bases','Editar bases')) return;
   id = (id != null && id !== "") ? parseInt(id) : null;
   const enUso = allRecetas.filter(r=>(r.preparaciones_usadas||[]).some(pu=>pu.prep_id===id));
   const texto = enUso.length>0
@@ -5831,6 +6132,7 @@ function abrirModalReceta(id = null) {
 }
 
 async function guardarReceta() {
+  if(!requierePermiso('editar_recetas','Editar recetas')) return;
   const nombre = document.getElementById('rec-nombre').value.trim();
   const precio = parseFloat(document.getElementById('rec-precio').value);
   if(!nombre)                  return toast('error','El nombre es obligatorio');
@@ -5881,6 +6183,7 @@ async function guardarReceta() {
 }
 
 async function eliminarReceta(id) {
+  if(!requierePermiso('editar_recetas','Editar recetas')) return;
   id = (id != null && id !== "") ? parseInt(id) : null;
   const res = await Swal.fire({title:'¿Eliminar plato?',icon:'warning',showCancelButton:true,confirmButtonText:'Eliminar',cancelButtonText:'Cancelar'});
   if(!res.isConfirmed) return;
@@ -6222,6 +6525,7 @@ function aplicarIvaGlobal(pct) {
 }
 
 async function guardarCompra() {
+  if(!requierePermiso('editar_compras','Registrar compras')) return;
   const proveedor = document.getElementById('comp-proveedor').value.trim();
   const fecha = document.getElementById('comp-fecha').value;
   if (!proveedor) return toast('error', 'El proveedor es obligatorio');
@@ -6572,6 +6876,7 @@ function abrirModalVenta(id = null) {
 }
 
 async function guardarVenta() {
+  if(!requierePermiso('editar_ventas','Registrar ventas')) return;
   const fecha = document.getElementById('venta-fecha').value;
   const totalVentas = parseFloat(document.getElementById('venta-total').value);
   if (!fecha) return toast('error', 'La fecha es obligatoria');
@@ -7210,6 +7515,13 @@ function horasSemanalesSala() {
 // ── CONFIGURACIÓN ──
 // ══════════════════════════════════════════════════════════════
 function renderConfiguracion() {
+  // Panel usuarios: solo visible para admin
+  const panelUsuarios = document.getElementById('panel-usuarios-admin');
+  if (panelUsuarios) {
+    const esAdmin = _miPerfil?.rol === 'admin';
+    panelUsuarios.style.display = esAdmin ? '' : 'none';
+    if (esAdmin) renderGestionUsuarios();
+  }
   document.getElementById('cfg-nombre').value        = config.nombre || '';
   document.getElementById('cfg-moneda').value        = config.moneda || '$';
   document.getElementById('cfg-iva').value           = config.iva || 10;
@@ -9264,6 +9576,7 @@ function calcularResumenEmpleado() {
 }
 
 async function guardarEmpleado() {
+  if(!requierePermiso('editar_empleados','Editar empleados')) return;
   const nombre      = document.getElementById('emp-nombre').value.trim();
   const salarioHora = parseFloat(document.getElementById('emp-salario-hora').value);
   const contrato    = document.getElementById('emp-contrato').value;
@@ -9354,6 +9667,7 @@ async function guardarEmpleado() {
 }
 
 async function eliminarEmpleado(id) {
+  if(!requierePermiso('editar_empleados','Editar empleados')) return;
   id = (id != null && id !== "") ? parseInt(id) : null;
   const res = await Swal.fire({ title: '¿Eliminar empleado?', text: 'Se eliminarán también sus registros de pago.', icon: 'warning', showCancelButton: true, confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar' });
   if (!res.isConfirmed) return;
@@ -13342,6 +13656,7 @@ function abrirModalProveedor(id=null) {
 }
 
 async function guardarProveedor() {
+  if(!requierePermiso('editar_proveedores','Editar proveedores')) return;
   const nombre = document.getElementById('prov-nombre').value.trim();
   if(!nombre) return toast('error','El nombre es obligatorio');
   const gv = id => document.getElementById(id)?.value.trim()||null;
@@ -13531,11 +13846,15 @@ async function init() {
   }
   // Usuario autenticado — ocultar overlay inmediatamente
 
+  // Cargar perfil y permisos
+  await cargarMiPerfil();
+
   // Ocultar overlay de carga
   const authOverlay = document.getElementById('auth-loading');
   if (authOverlay) authOverlay.style.display = 'none';
 
   await cargarTodo();
+  await cargarPerfiles();
 
   // Botón logout en sidebar
   const logoutBtn = document.createElement('button');
@@ -13557,6 +13876,7 @@ async function init() {
 
   renderDashboard();
   generarSemanaActual?.();
+  aplicarPermisosUI();
 }
 
 // Arrancar — esperar a que el DOM esté listo
