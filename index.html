@@ -4139,10 +4139,11 @@ function aplicarPermisosUI() {
 let allPerfiles = [];
 
 async function cargarPerfiles() {
-  if (!puedeHacer('gestionar_usuarios') && _miPerfil?.rol !== 'admin') return;
+  // Sin restricción local — RLS de Supabase ya filtra lo que puede ver cada rol
   try {
     const { data, error } = await _sb.from('perfiles_usuario').select('*').order('creado');
-    if (!error) allPerfiles = data || [];
+    if (error) { console.warn('cargarPerfiles:', error.message); allPerfiles = []; }
+    else allPerfiles = data || [];
   } catch(e) { allPerfiles = []; }
 }
 
@@ -4151,7 +4152,18 @@ function renderGestionUsuarios() {
   if (!container) return;
 
   if (!allPerfiles.length) {
-    container.innerHTML = '<div class="empty-state"><i class="fas fa-users"></i><p>Sin usuarios registrados</p></div>';
+    container.innerHTML = `<div style="text-align:center;padding:20px">
+      <div class="text-muted" style="margin-bottom:12px">
+        <i class="fas fa-users" style="font-size:2rem;opacity:0.3;display:block;margin-bottom:8px"></i>
+        Sin usuarios en la lista
+      </div>
+      <div class="text-xs text-muted" style="margin-bottom:12px">
+        Usuario actual: <strong>${_miPerfil?.email||'?'}</strong> · Rol: <strong>${_miPerfil?.rol||'?'}</strong>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="cargarPerfiles().then(()=>renderGestionUsuarios())">
+        <i class="fas fa-rotate-right"></i> Reintentar
+      </button>
+    </div>`;
     return;
   }
 
@@ -7520,7 +7532,10 @@ function renderConfiguracion() {
   if (panelUsuarios) {
     const esAdmin = _miPerfil?.rol === 'admin';
     panelUsuarios.style.display = esAdmin ? '' : 'none';
-    if (esAdmin) renderGestionUsuarios();
+    if (esAdmin) {
+      // Recargar perfiles frescos cada vez que se abre Configuración
+      cargarPerfiles().then(() => renderGestionUsuarios());
+    }
   }
   document.getElementById('cfg-nombre').value        = config.nombre || '';
   document.getElementById('cfg-moneda').value        = config.moneda || '$';
@@ -13854,7 +13869,7 @@ async function init() {
   if (authOverlay) authOverlay.style.display = 'none';
 
   await cargarTodo();
-  await cargarPerfiles();
+  await cargarPerfiles();  // ahora _miPerfil ya está listo
 
   // Botón logout en sidebar
   const logoutBtn = document.createElement('button');
