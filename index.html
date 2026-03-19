@@ -932,6 +932,15 @@ tr.warning-row td { background: rgba(232,155,75,0.05); }
   const _t = localStorage.getItem('rp_theme') || 'dark';
   document.documentElement.setAttribute('data-theme', _t);
 </script>
+<!-- Overlay de carga mientras verifica sesión -->
+<div id="auth-loading" style="position:fixed;inset:0;z-index:9999;
+  background:var(--bg,#0F0F13);display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:16px">
+  <div style="font-size:1.4rem;font-weight:800;color:#E8B84B;letter-spacing:-0.02em">RestaurantePRO</div>
+  <div style="width:32px;height:32px;border:3px solid #333;border-top-color:#E8B84B;
+    border-radius:50%;animation:spin 0.8s linear infinite"></div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+</div>
 <!-- ══════════════════════════════════════════════════
      MOBILE OVERLAY
 ══════════════════════════════════════════════════ -->
@@ -7020,7 +7029,6 @@ async function restaurarBackup(input) {
     toast('error', 'Error: ' + (e.message || e));
   }
   input.value = '';
-}
 }
 
 
@@ -13479,6 +13487,11 @@ async function init() {
     window.location.href = 'login.html';
     return;
   }
+  // Usuario autenticado — ocultar overlay inmediatamente
+
+  // Ocultar overlay de carga
+  const authOverlay = document.getElementById('auth-loading');
+  if (authOverlay) authOverlay.style.display = 'none';
 
   await cargarTodo();
 
@@ -13504,8 +13517,12 @@ async function init() {
   generarSemanaActual?.();
 }
 
-// Arrancar
-init();
+// Arrancar — esperar a que el DOM esté listo
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
 </script>
 
 <!--
