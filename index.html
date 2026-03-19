@@ -4094,6 +4094,23 @@ let allFacturasGasto = [];
 // allTurnos y allPlantillas se declaran en su sección
 let config = {};
 
+// Variables globales de gráficos Chart.js
+let chartVentasCosto   = null;
+let chartMargenCat     = null;
+let chartComprasMes    = null;
+let chartTopCostos     = null;
+let chartMermas        = null;
+let chartProveedores   = null;
+let chartRentabilidad  = null;
+let chartCostePuestos  = null;
+let chartEvoProv       = null;
+let chartGastoCat      = null;
+let chartGastoEvol     = null;
+let chartGastoVsVentas = null;
+let chartPagoSplit     = null;
+let chartSSBreakdown   = null;
+let chartGastoProv     = null;
+
 // ══════════════════════════════════════════════════════════════
 // ── HELPERS GLOBALES ──
 // ══════════════════════════════════════════════════════════════
@@ -13582,7 +13599,6 @@ function cargarAdjuntosCompra(compra) {
 // ── SECCIÓN PROVEEDORES ──
 // ══════════════════════════════════════════════════════════════
 let proveedoresFiltrados = [];
-let chartGastoProv = null, chartEvoProv = null;
 
 const METODO_ICONS = {
   whatsapp: '📱 WhatsApp',
