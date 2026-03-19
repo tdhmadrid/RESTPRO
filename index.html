@@ -3951,6 +3951,24 @@ tr.warning-row td { background: rgba(232,155,75,0.05); }
 // CONFIGURACIÓN GLOBAL
 // ══════════════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════
+// ── VARIABLES GLOBALES DE DATOS ──
+// ══════════════════════════════════════════════════════════════
+let allProductos     = [];
+let allPreparaciones = [];
+let allRecetas       = [];
+let allCompras       = [];
+let allProveedores   = [];
+let allPedidos       = [];
+let allMovimientos   = [];
+let allVentas        = [];
+let allEmpleados     = [];
+let allPagosEmp      = [];
+let allContratos     = [];
+let allFacturasGasto = [];
+// allTurnos y allPlantillas se declaran en su sección
+let config = {};
+
+// ══════════════════════════════════════════════════════════════
 // ── SUPABASE — Capa de datos (reemplaza IndexedDB) ──
 // ══════════════════════════════════════════════════════════════
 const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
@@ -7007,15 +7025,31 @@ async function restaurarBackup(input) {
         continue;
       }
 
-      // Insertar en batches de 100, sin id (Supabase los genera)
-      const rows = items.map(item => {
-        const { id: _id, ...rest } = item;
-        return { ...rest, user_id: uid };
-      });
+      // Insertar CON los IDs originales para preservar foreign keys
+      // Usamos upsert para manejar posibles duplicados
+      const rows = items.map(item => ({ ...item, user_id: uid }));
       for (let i = 0; i < rows.length; i += 100) {
-        const { error } = await _sb.from(storeName).insert(rows.slice(i, i+100));
-        if (error) console.error(storeName, error.message);
-        else total += Math.min(100, rows.length - i);
+        const batch = rows.slice(i, i + 100);
+        const { error } = await _sb.from(storeName)
+          .upsert(batch, { onConflict: 'id', ignoreDuplicates: false });
+        if (error) {
+          console.error(storeName, error.message);
+          // Si falla el upsert (ej: secuencia), intentar insert por item
+          for (const row of batch) {
+            const { error: e2 } = await _sb.from(storeName).upsert(row, { onConflict: 'id' });
+            if (!e2) total++;
+            else console.warn(storeName, 'item skip:', e2.message);
+          }
+        } else {
+          total += batch.length;
+        }
+      }
+      // Actualizar la secuencia autoincrement para evitar conflictos futuros
+      // (Supabase/PostgreSQL necesita saber el max id usado)
+      const maxId = Math.max(...items.map(i => i.id || 0));
+      if (maxId > 0) {
+        await _sb.rpc('reset_sequence', { table_name: storeName, max_id: maxId })
+          .then(()=>{}).catch(()=>{}); // best effort — ignorar si no existe la función
       }
     }
 
