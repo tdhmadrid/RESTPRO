@@ -573,6 +573,17 @@ tr.warning-row td { background: rgba(232,155,75,0.05); }
 }
 .toggle-switch input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(18px); }
+/* Filas de permiso en modal usuario */
+.eu-perm-row {
+  display:flex;align-items:center;gap:8px;cursor:pointer;
+  padding:6px 8px;border-radius:6px;font-size:0.8rem;
+  border:1px solid var(--border);background:var(--bg2);
+  transition:background 0.15s,border-color 0.15s;
+}
+.eu-perm-row:hover { background:var(--bg3); }
+.eu-perm-row input[type=checkbox] { width:16px;height:16px;cursor:pointer;accent-color:var(--accent); }
+.eu-perm-row:has(input:checked) { background:var(--accent-soft);border-color:var(--accent); }
+.eu-perm-row:has(input:checked) span { color:var(--accent);font-weight:600; }
 /* ══════════════════════════════════════════════════════
    EMPLOYEE SCHEDULE CALENDAR
 ══════════════════════════════════════════════════════ */
@@ -2158,6 +2169,111 @@ tr.warning-row td { background: rgba(232,155,75,0.05); }
 <!-- ══════════════════════════════════════════════════
      MODALES
 ══════════════════════════════════════════════════ -->
+
+<!-- Modal: Editar Usuario (Admin) -->
+<div class="modal-overlay" id="modal-usuario">
+  <div class="modal" style="max-width:580px;width:95vw">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-usuario-title">Editar Usuario</div>
+      <button class="btn btn-ghost btn-icon btn-sm" onclick="cerrarModal('modal-usuario')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="eu-id">
+
+      <!-- Info del usuario -->
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg3);border-radius:var(--radius);margin-bottom:16px">
+        <div style="width:44px;height:44px;border-radius:50%;background:var(--accent)22;border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="fas fa-user" style="color:var(--accent)"></i>
+        </div>
+        <div>
+          <div id="eu-email" style="font-weight:700;font-size:0.9rem"></div>
+          <div id="eu-creado" style="font-size:0.72rem;color:var(--text3)"></div>
+        </div>
+      </div>
+
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">Nombre visible</label>
+          <input type="text" class="form-input" id="eu-nombre" placeholder="Nombre del empleado">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Rol base</label>
+          <select class="form-select" id="eu-rol" onchange="onEuRolChange()">
+            <option value="admin">👑 Administrador — acceso total</option>
+            <option value="gerente">🟢 Gerente — casi todo</option>
+            <option value="cocinero">🔴 Cocinero — cocina y stock</option>
+            <option value="mesero">🔵 Mesero — solo consulta</option>
+            <option value="personalizado">⚙️ Personalizado — configurar abajo</option>
+          </select>
+          <div class="form-hint" id="eu-rol-desc"></div>
+        </div>
+      </div>
+
+      <!-- Permisos detallados — siempre visibles, se activan/desactivan según rol -->
+      <div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-top:4px">
+        <div style="background:var(--bg3);padding:8px 14px;font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);display:flex;justify-content:space-between;align-items:center">
+          <span>Permisos detallados</span>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:2px 8px" onclick="euSetTodos(true)">Todos ✓</button>
+            <button class="btn btn-ghost btn-sm" style="font-size:0.7rem;padding:2px 8px" onclick="euSetTodos(false)">Ninguno ✗</button>
+          </div>
+        </div>
+
+        <!-- Grupo: Gestión de contenido -->
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+          <div style="font-size:0.7rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">
+            <i class="fas fa-utensils" style="margin-right:5px"></i>Cocina y stock
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <label class="eu-perm-row"><input type="checkbox" id="ep-editar_productos"> <span>Editar materia prima</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-editar_bases"> <span>Editar bases/preparaciones</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-editar_recetas"> <span>Editar recetas</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-ver_compras"> <span>Ver compras</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-editar_compras"> <span>Registrar compras</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-editar_proveedores"> <span>Editar proveedores</span></label>
+          </div>
+        </div>
+
+        <!-- Grupo: Finanzas -->
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+          <div style="font-size:0.7rem;font-weight:700;color:var(--info);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">
+            <i class="fas fa-chart-line" style="margin-right:5px"></i>Finanzas y ventas
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <label class="eu-perm-row"><input type="checkbox" id="ep-ver_ventas"> <span>Ver ventas</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-editar_ventas"> <span>Registrar ventas</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-ver_gastos"> <span>Ver gastos fijos</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-editar_gastos"> <span>Editar gastos fijos</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-ver_reportes"> <span>Ver reportes</span></label>
+          </div>
+        </div>
+
+        <!-- Grupo: Personal -->
+        <div style="padding:10px 14px">
+          <div style="font-size:0.7rem;font-weight:700;color:var(--success);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">
+            <i class="fas fa-users" style="margin-right:5px"></i>Personal
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <label class="eu-perm-row"><input type="checkbox" id="ep-ver_empleados"> <span>Ver empleados y nóminas</span></label>
+            <label class="eu-perm-row"><input type="checkbox" id="ep-editar_empleados"> <span>Editar empleados y nóminas</span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Estado -->
+      <div style="margin-top:14px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <label class="toggle"><input type="checkbox" id="eu-activo"><span class="toggle-slider"></span></label>
+          <span style="font-size:0.85rem">Usuario activo (puede iniciar sesión)</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="cerrarModal('modal-usuario')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarUsuario()"><i class="fas fa-save"></i> Guardar cambios</button>
+    </div>
+  </div>
+</div>
 
 <!-- Modal: Producto / Materia Prima -->
 <div class="modal-overlay" id="modal-producto">
@@ -4205,84 +4321,125 @@ function renderGestionUsuarios() {
   }).join('');
 }
 
+// Todos los permisos disponibles agrupados
+const TODOS_PERMISOS = [
+  'editar_productos','editar_bases','editar_recetas',
+  'ver_compras','editar_compras','editar_proveedores',
+  'ver_ventas','editar_ventas','ver_gastos','editar_gastos','ver_reportes',
+  'ver_empleados','editar_empleados'
+];
+
+function onEuRolChange() {
+  const rol = document.getElementById('eu-rol')?.value;
+  const descs = {
+    admin:       'Acceso total — puede hacer todo en el sistema',
+    gerente:     'Acceso completo excepto gestión de usuarios',
+    cocinero:    'Cocina, bases, recetas y consulta de compras',
+    mesero:      'Solo consulta de ventas y recetas',
+    personalizado:'Configura manualmente cada permiso abajo'
+  };
+  const desc = document.getElementById('eu-rol-desc');
+  if (desc) desc.textContent = descs[rol] || '';
+
+  if (rol === 'admin') {
+    // Admin: todos los checkboxes marcados y deshabilitados
+    TODOS_PERMISOS.forEach(k => {
+      const cb = document.getElementById('ep-'+k);
+      if (cb) { cb.checked = true; cb.disabled = true; }
+    });
+  } else {
+    // Habilitar checkboxes y aplicar permisos del rol base
+    const base = ROLES_PREDEFINIDOS[rol]?.permisos || {};
+    TODOS_PERMISOS.forEach(k => {
+      const cb = document.getElementById('ep-'+k);
+      if (cb) {
+        cb.disabled = false;
+        cb.checked = !!base[k];
+      }
+    });
+  }
+}
+
+function euSetTodos(valor) {
+  const rol = document.getElementById('eu-rol')?.value;
+  if (rol === 'admin') return;
+  // Cambiar a personalizado si se modifica manualmente
+  if (document.getElementById('eu-rol')) document.getElementById('eu-rol').value = 'personalizado';
+  onEuRolChange();
+  TODOS_PERMISOS.forEach(k => {
+    const cb = document.getElementById('ep-'+k);
+    if (cb && !cb.disabled) cb.checked = valor;
+  });
+}
+
 function abrirModalEditarUsuario(userId) {
   const p = allPerfiles.find(x => x.id === userId);
   if (!p) return;
 
-  const rolDef = ROLES_PREDEFINIDOS[p.rol] || ROLES_PREDEFINIDOS.personalizado;
-  const permisosActuales = p.rol === 'admin' ? {} :
-    Object.assign({}, ROLES_PREDEFINIDOS[p.rol]?.permisos || {}, p.permisos || {});
+  document.getElementById('eu-id').value    = userId;
+  document.getElementById('eu-nombre').value = p.nombre || '';
+  document.getElementById('eu-email').textContent = p.email || '';
+  document.getElementById('eu-creado').textContent =
+    p.creado ? 'Registrado: ' + new Date(p.creado).toLocaleDateString('es-ES') : '';
+  document.getElementById('eu-activo').checked = !!p.activo;
+  document.getElementById('eu-rol').value = p.rol || 'cocinero';
+  document.getElementById('modal-usuario-title').textContent = `Editar: ${p.nombre || p.email}`;
 
-  Swal.fire({
-    title: `Editar: ${p.nombre || p.email}`,
-    html: `
-      <div style="text-align:left;font-size:0.85rem">
-        <div class="form-group" style="margin-bottom:12px">
-          <label class="form-label">Nombre</label>
-          <input type="text" id="su-nombre" class="form-input" value="${p.nombre||''}">
-        </div>
-        <div class="form-group" style="margin-bottom:12px">
-          <label class="form-label">Rol</label>
-          <select id="su-rol" class="form-select" onchange="onSwalRolChange()">
-            ${Object.entries(ROLES_PREDEFINIDOS).map(([k,v]) =>
-              `<option value="${k}" ${p.rol===k?'selected':''}>${v.label} — ${v.descripcion}</option>`
-            ).join('')}
-          </select>
-        </div>
-        <div id="su-permisos-custom" style="${p.rol==='personalizado'?'':'display:none'}">
-          <label class="form-label" style="margin-bottom:8px">Permisos personalizados</label>
-          ${Object.entries(PERMISOS_LABELS).map(([k,v]) => `
-            <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer">
-              <input type="checkbox" id="sp-${k}" ${permisosActuales[k]?'checked':''}>
-              <span>${v}</span>
-            </label>`).join('')}
-        </div>
-        <div class="form-group" style="margin-top:12px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-            <input type="checkbox" id="su-activo" ${p.activo?'checked':''}>
-            <span>Usuario activo</span>
-          </label>
-        </div>
-      </div>`,
-    showCancelButton: true,
-    confirmButtonText: 'Guardar',
-    cancelButtonText: 'Cancelar',
-    didOpen: () => {
-      window.onSwalRolChange = () => {
-        const rol = document.getElementById('su-rol').value;
-        const custom = document.getElementById('su-permisos-custom');
-        if (custom) custom.style.display = rol === 'personalizado' ? '' : 'none';
-        // Auto-check permisos del rol seleccionado
-        if (rol !== 'personalizado' && ROLES_PREDEFINIDOS[rol]) {
-          Object.entries(ROLES_PREDEFINIDOS[rol].permisos).forEach(([k,v]) => {
-            const cb = document.getElementById('sp-'+k);
-            if (cb) cb.checked = v;
-          });
-        }
-      };
-    }
-  }).then(async result => {
-    if (!result.isConfirmed) return;
-    const nuevoRol = document.getElementById('su-rol').value;
-    const nuevosPermisos = {};
-    if (nuevoRol === 'personalizado') {
-      Object.keys(PERMISOS_LABELS).forEach(k => {
-        nuevosPermisos[k] = !!document.getElementById('sp-'+k)?.checked;
-      });
-    }
-    const { error } = await _sb.from('perfiles_usuario').update({
-      nombre:   document.getElementById('su-nombre').value.trim() || p.nombre,
-      rol:      nuevoRol,
-      permisos: nuevoRol === 'personalizado' ? nuevosPermisos : {},
-      activo:   !!document.getElementById('su-activo')?.checked,
-      actualizado: new Date().toISOString()
-    }).eq('id', userId);
+  // Calcular permisos efectivos (rol base + overrides)
+  const permisosEfectivos = p.rol === 'admin'
+    ? Object.fromEntries(TODOS_PERMISOS.map(k => [k, true]))
+    : Object.assign({}, ROLES_PREDEFINIDOS[p.rol]?.permisos || {}, p.permisos || {});
 
-    if (error) return toast('error', 'Error: ' + error.message);
-    await cargarPerfiles();
-    renderGestionUsuarios();
-    toast('success', 'Usuario actualizado');
+  TODOS_PERMISOS.forEach(k => {
+    const cb = document.getElementById('ep-'+k);
+    if (cb) {
+      cb.checked  = !!permisosEfectivos[k];
+      cb.disabled = p.rol === 'admin';
+    }
   });
+
+  // Actualizar descripción del rol
+  onEuRolChange();
+  // Pero restaurar los valores del usuario (onEuRolChange los sobreescribe con el default del rol)
+  if (p.rol !== 'admin') {
+    TODOS_PERMISOS.forEach(k => {
+      const cb = document.getElementById('ep-'+k);
+      if (cb) cb.checked = !!permisosEfectivos[k];
+    });
+  }
+
+  abrirModal('modal-usuario');
+}
+
+async function guardarUsuario() {
+  const userId = document.getElementById('eu-id').value;
+  const rol    = document.getElementById('eu-rol').value;
+
+  // Recoger permisos del formulario
+  const permisos = {};
+  TODOS_PERMISOS.forEach(k => {
+    permisos[k] = !!document.getElementById('ep-'+k)?.checked;
+  });
+
+  // Si el rol coincide exactamente con un rol predefinido, limpiar overrides
+  const rolBase = ROLES_PREDEFINIDOS[rol]?.permisos || {};
+  const tieneOverrides = rol === 'personalizado' ||
+    TODOS_PERMISOS.some(k => (permisos[k] ?? false) !== (rolBase[k] ?? false));
+
+  const { error } = await _sb.from('perfiles_usuario').update({
+    nombre:      document.getElementById('eu-nombre').value.trim() || null,
+    rol:         rol,
+    permisos:    tieneOverrides ? permisos : {},
+    activo:      !!document.getElementById('eu-activo').checked,
+    actualizado: new Date().toISOString()
+  }).eq('id', userId);
+
+  if (error) return toast('error', 'Error al guardar: ' + error.message);
+
+  cerrarModal('modal-usuario');
+  await cargarPerfiles();
+  renderGestionUsuarios();
+  toast('success', 'Usuario actualizado correctamente');
 }
 
 // ══════════════════════════════════════════════════════════════
