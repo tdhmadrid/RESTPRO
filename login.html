@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RestaurantePRO — Acceso</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:     #0F0F13;
+      --bg2:    #17171D;
+      --border: #2a2a35;
+      --accent: #E8B84B;
+      --text:   #F0EDE6;
+      --muted:  #888;
+      --danger: #E8534B;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+    }
+    .logo {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: var(--accent);
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 32px;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 4px;
+    }
+    .tab {
+      flex: 1;
+      padding: 8px;
+      text-align: center;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--muted);
+      border: none;
+      background: none;
+      transition: all 0.15s;
+    }
+    .tab.active {
+      background: var(--bg2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: var(--accent); }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--accent);
+      color: #1a1200;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error {
+      background: rgba(232,83,75,0.12);
+      border: 1px solid rgba(232,83,75,0.3);
+      color: var(--danger);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .success {
+      background: rgba(75,232,125,0.1);
+      border: 1px solid rgba(75,232,125,0.25);
+      color: #4BE87D;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.82rem;
+      margin-bottom: 16px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">RestaurantePRO</div>
+    <div class="subtitle">Control Gerencial</div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('login')">Iniciar sesión</button>
+      <button class="tab" onclick="switchTab('register')">Registrarse</button>
+    </div>
+
+    <div id="msg-error" class="error"></div>
+    <div id="msg-success" class="success"></div>
+
+    <!-- Login -->
+    <div id="panel-login">
+      <div class="form-group">
+        <label>Correo electrónico</label>
+        <input type="email" id="login-email" placeholder="tu@email.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter') doLogin()">
+      </div>
+      <button class="btn" id="btn-login" onclick="doLogin()">Entrar</button>
+    </div>
+
+    <!-- Registro -->
+    <div id="panel-register" style="display:none">
+      <div class="form-group">
+        <label>Correo electrónico</label>
+        <input type="email" id="reg-email" placeholder="tu@email.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label>Contraseña (mín. 6 caracteres)</label>
+        <input type="password" id="reg-password" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label>Confirmar contraseña</label>
+        <input type="password" id="reg-password2" placeholder="••••••••"
+          onkeydown="if(event.key==='Enter') doRegister()">
+      </div>
+      <button class="btn" id="btn-register" onclick="doRegister()">Crear cuenta</button>
+    </div>
+  </div>
+
+  <script>
+    // ── CONFIGURACIÓN — cambiar por tus valores de Supabase ──
+    const SUPABASE_URL  = 'https://iwrzwtokmfimjdzzckhh.supabase.co';
+    const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3cnp3dG9rbWZpbWpkenpja2hoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MzcwNTgsImV4cCI6MjA4OTUxMzA1OH0.B3AuVsilyWVW05HTvE2_FBI-ANvex4_88DYFQSki_uA';
+    // ─────────────────────────────────────────────────────────
+
+    const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    // Si ya hay sesión activa → redirigir directamente a la app
+    _sb.auth.getSession().then(({ data }) => {
+      if (data?.session) window.location.href = 'index.html';
+    });
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach((t,i) =>
+        t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='register')));
+      document.getElementById('panel-login').style.display    = tab==='login'    ? '' : 'none';
+      document.getElementById('panel-register').style.display = tab==='register' ? '' : 'none';
+      hideMessages();
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('msg-error');
+      el.textContent = msg; el.style.display = 'block';
+      document.getElementById('msg-success').style.display = 'none';
+    }
+    function showSuccess(msg) {
+      const el = document.getElementById('msg-success');
+      el.textContent = msg; el.style.display = 'block';
+      document.getElementById('msg-error').style.display = 'none';
+    }
+    function hideMessages() {
+      document.getElementById('msg-error').style.display = 'none';
+      document.getElementById('msg-success').style.display = 'none';
+    }
+
+    async function doLogin() {
+      const email    = document.getElementById('login-email').value.trim();
+      const password = document.getElementById('login-password').value;
+      if (!email || !password) return showError('Introduce email y contraseña');
+
+      const btn = document.getElementById('btn-login');
+      btn.disabled = true; btn.textContent = 'Entrando...';
+      hideMessages();
+
+      const { data, error } = await _sb.auth.signInWithPassword({ email, password });
+      btn.disabled = false; btn.textContent = 'Entrar';
+
+      if (error) return showError(error.message);
+      window.location.href = 'index.html';
+    }
+
+    async function doRegister() {
+      const email = document.getElementById('reg-email').value.trim();
+      const pass1 = document.getElementById('reg-password').value;
+      const pass2 = document.getElementById('reg-password2').value;
+      if (!email || !pass1) return showError('Rellena todos los campos');
+      if (pass1 !== pass2)  return showError('Las contraseñas no coinciden');
+      if (pass1.length < 6) return showError('La contraseña debe tener al menos 6 caracteres');
+
+      const btn = document.getElementById('btn-register');
+      btn.disabled = true; btn.textContent = 'Creando cuenta...';
+      hideMessages();
+
+      const { data, error } = await _sb.auth.signUp({ email, password: pass1 });
+      btn.disabled = false; btn.textContent = 'Crear cuenta';
+
+      if (error) return showError(error.message);
+      showSuccess('Cuenta creada. Revisa tu email para confirmar y luego inicia sesión.');
+    }
+  </script>
+</body>
+</html>
