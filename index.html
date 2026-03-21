@@ -4494,15 +4494,17 @@ async function authSignOut() {
 async function dbGetAll(storeName) {
   if (storeName === 'configuracion') return _getConfig();
   const { data, error } = await _sb.from(STORE_TABLE[storeName])
-    .select('*').eq('user_id', authUserId()).order('id');
+    .select('*').order('id');
   if (error) { console.error('dbGetAll', storeName, error.message); return []; }
   return data || [];
 }
 
 async function dbAdd(storeName, record) {
   if (storeName === 'configuracion') return _upsertConfig(record);
-  const row = { ...record, user_id: authUserId() };
+  const row = { ...record };
   delete row.id;
+  // Conservar user_id si el registro lo tiene, si no usar el actual
+  if (!row.user_id) row.user_id = authUserId();
   const { data, error } = await _sb.from(STORE_TABLE[storeName])
     .insert(row).select('id').single();
   if (error) throw new Error('dbAdd ' + storeName + ': ' + error.message);
@@ -4511,7 +4513,8 @@ async function dbAdd(storeName, record) {
 
 async function dbPut(storeName, record) {
   if (storeName === 'configuracion') return _upsertConfig(record);
-  const row = { ...record, user_id: authUserId() };
+  const row = { ...record };
+  if (!row.user_id) row.user_id = authUserId();
   const { data, error } = await _sb.from(STORE_TABLE[storeName])
     .upsert(row, { onConflict: 'id' }).select('id').single();
   if (error) throw new Error('dbPut ' + storeName + ': ' + error.message);
@@ -4520,20 +4523,20 @@ async function dbPut(storeName, record) {
 
 async function dbDelete(storeName, id) {
   const { error } = await _sb.from(STORE_TABLE[storeName])
-    .delete().eq('id', id).eq('user_id', authUserId());
+    .delete().eq('id', id);
   if (error) throw new Error('dbDelete ' + storeName + ': ' + error.message);
 }
 
 async function dbClear(storeName) {
   if (!STORE_TABLE[storeName]) return;
-  const { error } = await _sb.from(STORE_TABLE[storeName])
-    .delete().eq('user_id', authUserId());
+  const { error } = await _sb.from(STORE_TABLE[storeName]).delete().neq('id', 0);
   if (error) console.error('dbClear', storeName, error.message);
 }
 
 async function _getConfig() {
+  // Configuracion: leer la primera fila disponible (compartida del restaurante)
   const { data } = await _sb.from('configuracion')
-    .select('*').eq('user_id', authUserId()).maybeSingle();
+    .select('*').order('id').limit(1).maybeSingle();
   if (!data) return [];
   const { id, user_id, actualizado, ...fields } = data;
   return Object.entries(fields).map(([key, value]) => ({ key, value }));
@@ -4541,15 +4544,18 @@ async function _getConfig() {
 
 async function _upsertConfig(record) {
   const uid = authUserId();
+  // Buscar config existente (cualquier usuario del restaurante)
   const { data: ex } = await _sb.from('configuracion')
-    .select('id').eq('user_id', uid).maybeSingle();
+    .select('id').order('id').limit(1).maybeSingle();
   let row;
   if (record.key !== undefined) {
-    row = { user_id: uid, [record.key]: record.value };
+    row = { [record.key]: record.value };
     if (ex) row.id = ex.id;
+    else row.user_id = uid;
   } else {
-    row = { ...record, user_id: uid };
+    row = { ...record };
     if (ex) row.id = ex.id;
+    else row.user_id = uid;
   }
   const { error } = await _sb.from('configuracion').upsert(row, { onConflict: 'id' });
   if (error) console.error('upsertConfig', error.message);
@@ -7727,14 +7733,15 @@ async function guardarConfiguracion() {
   config.ss_trabajador_pct = parseFloat(document.getElementById('cfg-ss-trabajador').value) || 6.35;
   // horarios_dias ya está en config.horarios_dias por updateHorarioDia
 
-  // Guardar toda la config en Supabase de una sola vez
+  // Guardar toda la config en Supabase de una sola vez (fila compartida del restaurante)
   const uid = authUserId();
   const cfgFields = { nombre:config.nombre, moneda:config.moneda, iva:config.iva,
     ss_empresa_pct:config.ss_empresa_pct, ss_trabajador_pct:config.ss_trabajador_pct,
     horarios_dias:config.horarios_dias };
-  const { data: exCfg } = await _sb.from('configuracion').select('id').eq('user_id',uid).maybeSingle();
-  const cfgRow = { ...cfgFields, user_id: uid };
+  const { data: exCfg } = await _sb.from('configuracion').select('id').order('id').limit(1).maybeSingle();
+  const cfgRow = { ...cfgFields };
   if (exCfg) cfgRow.id = exCfg.id;
+  else cfgRow.user_id = uid;
   await _sb.from('configuracion').upsert(cfgRow, { onConflict: 'id' });
 
   document.getElementById('sidebar-biz-name').textContent = config.nombre;
