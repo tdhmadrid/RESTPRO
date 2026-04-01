@@ -2611,6 +2611,9 @@ tr.warning-row td { background: rgba(232,155,75,0.05); }
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="cerrarModal('modal-preparacion')">Cancelar</button>
+      <button class="btn btn-ghost" id="btn-dup-prep" onclick="cerrarModal('modal-preparacion');duplicarPreparacion(parseInt(document.getElementById('prep-id').value))" style="display:none" title="Duplicar esta base">
+        <i class="fas fa-copy"></i> Duplicar
+      </button>
       <button class="btn btn-ghost" id="btn-pdf-prep" onclick="exportarPDFBase(document.getElementById('prep-id').value)" style="display:none">
         <i class="fas fa-file-pdf"></i> Exportar PDF
       </button>
@@ -2832,6 +2835,9 @@ tr.warning-row td { background: rgba(232,155,75,0.05); }
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="cerrarModal('modal-receta')">Cancelar</button>
+      <button class="btn btn-ghost" id="btn-dup-rec" onclick="cerrarModal('modal-receta');duplicarReceta(parseInt(document.getElementById('rec-id').value))" style="display:none" title="Duplicar este plato">
+        <i class="fas fa-copy"></i> Duplicar
+      </button>
       <button class="btn btn-ghost" id="btn-pdf-rec" onclick="exportarPDFReceta(document.getElementById('rec-id').value)" style="display:none">
         <i class="fas fa-file-pdf"></i> Exportar PDF
       </button>
@@ -5256,6 +5262,7 @@ function renderPreparacionesCards() {
       </div>
       <div class="flex gap-2">
         <button class="btn btn-primary btn-sm" onclick="abrirModalPreparacion(${p.id})"><i class="fas fa-edit"></i> Editar</button>
+        <button class="btn btn-ghost btn-sm" onclick="duplicarPreparacion(${p.id})" title="Duplicar base"><i class="fas fa-copy"></i></button>
         <button class="btn btn-ghost btn-sm" onclick="verFichaTecnicaBase(${p.id})"><i class="fas fa-receipt"></i> Ficha</button>
         <button class="btn btn-ghost btn-sm" onclick="exportarPDFBase(${p.id})" title="Exportar PDF"><i class="fas fa-file-pdf"></i></button>
         <button class="btn btn-danger btn-sm" onclick="eliminarPreparacion(${p.id})"><i class="fas fa-trash"></i></button>
@@ -5603,6 +5610,8 @@ function abrirModalPreparacion(id = null) {
   // Show/hide PDF button
   const pdfBtn = document.getElementById('btn-pdf-prep');
   if(pdfBtn) pdfBtn.style.display = id ? 'flex' : 'none';
+  const dupBtnP = document.getElementById('btn-dup-prep');
+  if(dupBtnP) dupBtnP.style.display = id ? 'flex' : 'none';
 
   if(id) {
     const p = allPreparaciones.find(x=>x.id===id);
@@ -5677,6 +5686,22 @@ async function guardarPreparacion() {
   cerrarModal('modal-preparacion');
   renderBases();
   toast('success', idVal ? 'Base actualizada' : 'Base guardada');
+}
+
+async function duplicarPreparacion(id) {
+  if(!requierePermiso('editar_bases','Editar bases')) return;
+  const p = allPreparaciones.find(x => x.id === id);
+  if(!p) return;
+  const { id: _id, creado, actualizado, ...copia } = p;
+  copia.nombre     = 'Copia de ' + copia.nombre;
+  copia.activo     = true;
+  copia.creado     = new Date().toISOString();
+  copia.actualizado= new Date().toISOString();
+  const nuevoId = await dbAdd('preparaciones', copia);
+  await cargarTodo();
+  renderBases();
+  toast('success', `Base duplicada — puedes editarla ahora`);
+  setTimeout(() => abrirModalPreparacion(nuevoId), 300);
 }
 
 async function eliminarPreparacion(id) {
@@ -5832,6 +5857,7 @@ function actualizarGridRecetas() {
       </div>
       <div class="flex gap-2">
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();abrirModalReceta(${r.id})"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();duplicarReceta(${r.id})" title="Duplicar plato"><i class="fas fa-copy"></i></button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();exportarPDFReceta(${r.id})" title="Exportar PDF"><i class="fas fa-file-pdf"></i></button>
         <button class="btn btn-danger btn-sm" onclick="event.stopPropagation();eliminarReceta(${r.id})"><i class="fas fa-trash"></i></button>
         <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();toggleRecetaActiva(${r.id})">
@@ -6283,6 +6309,8 @@ function abrirModalReceta(id = null) {
   // Show/hide PDF button
   const pdfBtnR = document.getElementById('btn-pdf-rec');
   if(pdfBtnR) pdfBtnR.style.display = id ? 'flex' : 'none';
+  const dupBtnR = document.getElementById('btn-dup-rec');
+  if(dupBtnR) dupBtnR.style.display = id ? 'flex' : 'none';
 
   if(id) {
     const r = allRecetas.find(x=>x.id===id);
@@ -6372,6 +6400,23 @@ async function guardarReceta() {
   cerrarModal('modal-receta');
   renderRecetas();
   toast('success', idVal?'Escandallo actualizado':'Plato creado');
+}
+
+async function duplicarReceta(id) {
+  if(!requierePermiso('editar_recetas','Editar recetas')) return;
+  const r = allRecetas.find(x => x.id === id);
+  if(!r) return;
+  const { id: _id, creado, actualizado, ...copia } = r;
+  copia.nombre     = 'Copia de ' + copia.nombre;
+  copia.activo     = false;  // inactivo hasta que se revise
+  copia.creado     = new Date().toISOString();
+  copia.actualizado= new Date().toISOString();
+  const nuevoId = await dbAdd('recetas', copia);
+  await cargarTodo();
+  renderRecetas();
+  toast('success', `Plato duplicado — puedes editarlo ahora`);
+  // Abrir directamente para editar
+  setTimeout(() => abrirModalReceta(nuevoId), 300);
 }
 
 async function eliminarReceta(id) {
